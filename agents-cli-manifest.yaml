@@ -1,0 +1,8 @@
+name: expense-reviewer
+acli_version: 0.5.0
+agent_directory: app
+region: us-east1
+base_template: adk
+language: python
+create_params:
+  deployment_target: agent_runtime

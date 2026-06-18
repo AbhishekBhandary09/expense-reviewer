@@ -1,0 +1,8 @@
+.venv/
+.adk/
+.agents/
+.google-agents-cli/
+tests/
+scratch/
+__pycache__/
+*.pyc
