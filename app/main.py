@@ -20,6 +20,11 @@ logger = logging.getLogger("expense_reviewer_ambient")
 
 app = FastAPI(title="Ambient Expense Reviewer Service")
 
+@app.get("/")
+async def root():
+    return {"status": "healthy", "service": "Ambient Expense Reviewer Service"}
+
+
 # 2. Pub/Sub Request Payload Schemas
 class PubSubMessage(BaseModel):
     data: Optional[str] = Field(None, description="Base64-encoded message data.")
