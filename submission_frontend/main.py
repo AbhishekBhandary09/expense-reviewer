@@ -662,6 +662,15 @@ class ActionPayload(BaseModel):
     interrupt_id: str
     approved: bool
 
+def get_access_token():
+    print("Getting OAuth2 access token...")
+    import google.auth
+    import google.auth.transport.requests
+    credentials, project = google.auth.default()
+    auth_request = google.auth.transport.requests.Request()
+    credentials.refresh(auth_request)
+    return credentials.token, project
+
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard():
     return HTMLResponse(content=HTML_TEMPLATE)
@@ -794,47 +803,54 @@ async def take_action(session_id: str, payload: ActionPayload):
         }
         
     try:
-        from vertexai.preview import reasoning_engines
-        import vertexai
-        
-        # Initialize Vertex AI
-        vertexai.init(project=project_id, location=location)
-        
-        remote_app = reasoning_engines.ReasoningEngine(
-            f"projects/{project_id}/locations/{location}/reasoningEngines/{agent_runtime_id}"
-        )
+        # Obtain refreshed OAuth access token
+        token, default_project = get_access_token()
         
         decision_str = "approve" if payload.approved else "reject"
         
-        # Call query to resume the paused session on Agent Runtime.
-        # Pass the resume payload directly as the dict value of the message argument.
-        # Strict user_id set to "default-user".
-        response = remote_app.query(
-            message={
-                "role": "user",
-                "parts": [
-                    {
-                        "function_response": {
-                            "id": payload.interrupt_id,
-                            "name": "adk_request_input",
-                            "response": {
-                                "decision": decision_str,
-                                "approved": payload.approved
+        # Invoke Reasoning Engine REST API directly to resume the paused session on Agent Runtime.
+        # This completely removes the dependency on the heavy google-cloud-aiplatform library,
+        # allowing fast Vercel deployments well within standard resource limits.
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/reasoningEngines/{agent_runtime_id}:query"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        req_body = {
+            "input": {
+                "message": {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "function_response": {
+                                "id": payload.interrupt_id,
+                                "name": "adk_request_input",
+                                "response": {
+                                    "decision": decision_str,
+                                    "approved": payload.approved
+                                }
                             }
                         }
-                    }
-                ]
-            },
-            user_id="default-user",
-            session_id=session_id
-        )
+                    ]
+                },
+                "user_id": "default-user",
+                "session_id": session_id
+            }
+        }
         
-        # Try to parse final state if returned or retrieve it afterwards
+        res = requests.post(url, headers=headers, json=req_body)
+        if res.status_code != 200:
+            print(f"Error from Reasoning Engine API: {res.status_code} - {res.text}")
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+            
+        response_data = res.json()
+        print(f"Reasoning Engine response: {response_data}")
+        output = response_data.get("output", {})
+        
+        # Try to parse final state if returned
         final_state = {}
-        if isinstance(response, dict):
-            final_state = response.get("state", {})
-        elif hasattr(response, "state"):
-            final_state = getattr(response, "state", {})
+        if isinstance(output, dict):
+            final_state = output.get("state", {})
             
         return {
             "status": "success",
