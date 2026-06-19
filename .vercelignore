@@ -6,3 +6,14 @@ tests/
 scratch/
 __pycache__/
 *.pyc
+pyproject.toml
+uv.lock
+deployment/
+artifacts/
+test_expense_graph.py
+product.json
+product_model.py
+demo_bad_code.py
+bad_schema.sql
+my_script.py
+Makefile
